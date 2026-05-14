@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>美柚相册 · V8</title>
+<style>
+:root {
+  --brand: #ff4d88;
+  --brand-bg: rgba(255,77,136,0.18);
+  --brand-light: rgba(255,77,136,0.12);
+  --bg: #000;
+  --bg-dark: #2a2a2a;
+  --surface: #1c1c1e;
+  --surface2: #2c2c2e;
+  --surface3: #3a3a3c;
+  --text-primary: #fff;
+  --text-secondary: rgba(255,255,255,0.6);
+  --text-tertiary: rgba(255,255,255,0.35);
+  --line: rgba(255,255,255,0.10);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #0a0a0a;
+  display: flex; align-items: center; justify-content: center;
+  font-family: "PingFang SC","SF Pro Text","Helvetica Neue",Arial,sans-serif;
+}
+.phone-shell {
+  width: 393px; height: 852px; background: #1a1a1a;
+  border-radius: 52px; padding: 3px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.15), 0 0 0 3px rgba(255,255,255,0.04), 0 40px 100px rgba(0,0,0,0.9);
+  position: relative; flex-shrink: 0;
+}
+.phone-shell::before {
+  content: ''; position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  width: 120px; height: 34px; background: #1a1a1a; border-radius: 20px; z-index: 200;
+}
+.phone-screen {
+  width: 100%; height: 100%; background: var(--bg-dark);
+  border-radius: 50px; overflow: hidden; position: relative;
+}
+
+/* 页面层 */
+.page { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity 0.22s; }
+.page.active { opacity: 1; pointer-events: auto; }
+
+/* 状态栏 */
+.status-bar { height: 54px; display: flex; align-items: flex-end; padding: 0 28px 10px; justify-content: space-between; flex-shrink: 0; }
+.status-time { font-size: 15px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.3px; }
+.status-icons { display: flex; align-items: center; gap: 6px; }
+
+/* 通用导航栏 - 只放关闭/返回和标题 */
+.nav-bar { height: 52px; display: flex; align-items: center; padding: 0 16px; justify-content: space-between; flex-shrink: 0; }
+.btn-x { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--text-primary); font-size: 20px; cursor: pointer; background: none; border: none; font-family: inherit; }
+.btn-text { font-size: 15px; color: var(--text-primary); background: none; border: none; font-family: inherit; cursor: pointer; padding: 8px 4px; }
+.btn-brand-text { font-size: 15px; color: var(--brand); background: none; border: none; font-family: inherit; cursor: pointer; padding: 8px 4px; }
+
+/* 通用底部Bar */
+.bottom-bar { height: 52px; background: var(--surface); border-top: 0.5px solid var(--line); display: flex; align-items: center; padding: 0 16px; justify-content: space-between; flex-shrink: 0; }
+.preview-btn { font-size: 15px; color: var(--text-secondary); background: none; border: none; font-family: inherit; cursor: pointer; }
+.quality-btn { display: flex; align-items: center; gap: 4px; font-size: 14px; color: var(--text-primary); background: none; border: none; font-family: inherit; cursor: pointer; }
+.chevron-up { width: 8px; height: 8px; border-left: 1.5px solid var(--text-secondary); border-top: 1.5px solid var(--text-secondary); transform: rotate(45deg) translateY(3px); }
+.primary-btn { background: var(--brand); color: #fff; border: none; border-radius: 999px; padding: 9px 20px; font-size: 15px; font-weight: 500; font-family: inherit; cursor: pointer; min-width: 100px; text-align: center; transition: opacity 0.15s; }
+.primary-btn:active { opacity: 0.85; }
+.ghost-btn { background: var(--surface2); color: var(--text-tertiary); border: none; border-radius: 999px; padding: 9px 20px; font-size: 15px; font-weight: 500; font-family: inherit; cursor: pointer; min-width: 88px; text-align: center; transition: background 0.15s, color 0.15s; }
+.ghost-btn.active { background: var(--brand); color: #fff; }
+
+/* 通用Tab */
+.bottom-tab { height: 56px; background: var(--surface); border-top: 0.5px solid var(--line); display: flex; align-items: center; justify-content: space-around; flex-shrink: 0; padding-bottom: 6px; }
+.tab-item { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; flex: 1; padding: 4px 0; position: relative; }
+.tab-label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.tab-item.active .tab-label { color: var(--text-primary); font-weight: 500; }
+.tab-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--brand); position: absolute; bottom: -2px; opacity: 0; }
+.tab-item.active .tab-dot { opacity: 1; }
+.tab-ai { font-size: 13px; font-weight: 700; color: var(--brand); }
+
+/* 滚动区通用 */
+.scroll-wrap { flex: 1; overflow: hidden; position: relative; }
+.photo-scroll { height: 100%; overflow-y: auto; overflow-x: hidden; padding: 0 2px 8px 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; user-select: none; -webkit-user-select: none; }
+.photo-scroll::-webkit-scrollbar { display: none; }
+.date-group { margin-bottom: 2px; }
+.date-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 6px 6px; }
+.date-label { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.date-action-btn { font-size: 13px; color: var(--brand); background: none; border: none; font-family: inherit; cursor: pointer; }
+.photo-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 2px; }
+
+/* 照片格子 */
+.photo-cell { aspect-ratio: 1; position: relative; cursor: pointer; padding: 2px; border-radius: 4px; background: transparent; transition: background 0.15s; }
+.photo-cell.selected { background: var(--brand-bg); }
+.photo-inner { width: 100%; height: 100%; position: relative; overflow: hidden; border-radius: 2px; transition: transform 0.2s cubic-bezier(0.34,1.4,0.64,1), border-radius 0.2s ease; }
+.photo-cell.selected .photo-inner { transform: scale(0.85); border-radius: 8px; }
+.photo-bg { width: 100%; height: 100%; display: block; }
+.check-ring { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.85); background: transparent; display: flex; align-items: center; justify-content: center; pointer-events: none; transition: background 0.15s, border-color 0.15s; z-index: 2; }
+.photo-cell.selected .check-ring { background: var(--brand); border-color: var(--brand); }
+.tick { display: none; width: 5px; height: 9px; border-right: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(45deg) translate(-1px,-1px); }
+.photo-cell.selected .tick { display: block; }
+.check-num { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: #fff; font-size: 11px; font-weight: 600; display: none; align-items: center; justify-content: center; pointer-events: none; z-index: 2; }
+.photo-cell.selected .check-num { display: flex; }
+.photo-cell.selected .check-ring { display: none; }
+
+/* 识别结果格子：始终显示勾，不显示序号 */
+.photo-cell.tick-only.selected .check-ring { display: flex; }
+.photo-cell.tick-only.selected .check-num { display: none; }
+
+/* 已添加状态（不可点击，灰色） */
+.photo-cell.added { opacity: 0.45; pointer-events: none; }
+.photo-cell.added .check-ring { background: rgba(255,255,255,0.5); border-color: rgba(255,255,255,0.5); }
+.photo-cell.added .tick { display: block; }
+
+/* 时间轴 */
+.time-axis { position: absolute; right: 0; top: 0; bottom: 0; width: 32px; z-index: 30; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.time-axis.visible { opacity: 1; pointer-events: auto; }
+.axis-handle { position: absolute; right: 0; display: flex; align-items: center; justify-content: flex-end; cursor: grab; }
+.axis-handle:active { cursor: grabbing; }
+.handle-pill { background: rgba(255,255,255,0.92); border-radius: 12px 0 0 12px; width: 28px; height: 40px; display: flex; align-items: center; justify-content: center; box-shadow: -2px 0 10px rgba(0,0,0,0.35); transition: width 0.15s; }
+.time-axis.dragging .handle-pill { width: 32px; background: #fff; }
+.handle-arrows { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.arrow-up { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid rgba(0,0,0,0.5); }
+.arrow-down { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid rgba(0,0,0,0.5); }
+.time-axis.dragging .arrow-up { border-bottom-color: rgba(0,0,0,0.7); }
+.time-axis.dragging .arrow-down { border-top-color: rgba(0,0,0,0.7); }
+.time-bubble { position: absolute; right: 34px; background: rgba(30,30,30,0.92); backdrop-filter: blur(12px); border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 500; color: #fff; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 50; }
+.time-bubble.visible { opacity: 1; }
+
+/* 微信格子 */
+.wechat-cell { aspect-ratio: 1; padding: 2px; }
+.wechat-inner { width: 100%; height: 100%; background: var(--surface2); border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.wechat-icon { width: 38px; height: 38px; background: #07c160; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.wechat-inner span { font-size: 11px; color: var(--text-secondary); }
+
+/* AI入口 */
+.ai-entry-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ai-start-btn { width: 180px; height: 180px; border-radius: 50%; background: linear-gradient(135deg,#ff6ea8,#ff4d88 60%,#e0357a); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.15s; animation: pulse 2.5s ease-in-out infinite; }
+.ai-start-btn:active { transform: scale(0.96); }
+.ai-start-btn span { font-size: 18px; font-weight: 500; color: #fff; }
+@keyframes pulse { 0%,100%{box-shadow:0 0 0 12px rgba(255,77,136,0.12),0 0 0 24px rgba(255,77,136,0.06)} 50%{box-shadow:0 0 0 18px rgba(255,77,136,0.08),0 0 0 36px rgba(255,77,136,0.03)} }
+
+/* 进度条 */
+.progress-bar-wrap { margin: 0 16px; background: var(--surface); border-radius: 12px; padding: 12px 14px 10px; flex-shrink: 0; }
+.progress-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.progress-icon { width: 32px; height: 32px; border-radius: 50%; background: var(--brand-light); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.progress-text-wrap { flex: 1; min-width: 0; }
+.progress-title { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+.progress-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.pause-btn { background: var(--surface3); color: var(--text-primary); border: none; border-radius: 999px; padding: 6px 14px; font-size: 12px; font-family: inherit; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+.progress-track { height: 3px; background: var(--surface3); border-radius: 2px; overflow: hidden; margin-top: 2px; }
+.progress-fill { height: 100%; background: var(--brand); border-radius: 2px; width: 0%; transition: width 0.3s ease; }
+.progress-fill.paused { opacity: 0.5; }
+
+/* 识别结果区 */
+.recog-scroll-wrap { flex: 1; overflow: hidden; position: relative; }
+.recog-scroll { height: 100%; overflow-y: auto; overflow-x: hidden; padding: 8px 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; user-select: none; -webkit-user-select: none; }
+.recog-scroll::-webkit-scrollbar { display: none; }
+
+/* 识别完成弹窗 */
+.done-modal { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); z-index: 80; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.done-modal.show { opacity: 1; pointer-events: auto; }
+.done-card { width: 260px; background: var(--surface); border-radius: 20px; padding: 24px 20px 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; position: relative; transform: scale(0.88); transition: transform 0.25s cubic-bezier(0.34,1.4,0.64,1); }
+.done-modal.show .done-card { transform: scale(1); }
+.done-icon { width: 52px; height: 52px; border-radius: 50%; background: var(--brand-light); display: flex; align-items: center; justify-content: center; }
+.done-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.done-desc { font-size: 13px; color: var(--text-secondary); text-align: center; }
+.done-view-btn { width: 100%; background: var(--brand); color: #fff; border: none; border-radius: 999px; padding: 13px 0; font-size: 16px; font-weight: 500; font-family: inherit; cursor: pointer; margin-top: 6px; transition: opacity 0.15s; }
+.done-view-btn:active { opacity: 0.85; }
+
+/* 后台banner */
+.bg-banner { position: absolute; top: 110px; left: 12px; right: 12px; background: var(--surface); border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; z-index: 60; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+.bg-banner.show { opacity: 1; pointer-events: auto; }
+.bg-banner-info { flex: 1; }
+.bg-banner-title { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+.bg-banner-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.bg-banner-btn { font-size: 13px; color: var(--brand); background: none; border: none; font-family: inherit; cursor: pointer; white-space: nowrap; }
+
+/* 添加照片导航 */
+.add-nav-title { font-size: 16px; font-weight: 500; color: var(--text-primary); }
+
+/* Toast */
+.toast { position: absolute; bottom: 130px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.78); backdrop-filter: blur(8px); border-radius: 999px; padding: 7px 16px; font-size: 12px; color: rgba(255,255,255,0.9); white-space: nowrap; z-index: 150; opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+.toast.show { opacity: 1; }
+
+/* ===== 亮色页基础 ===== */
+.page-light { background: #f2f2f5; }
+.page-light .status-bar { background: #fff; }
+.page-light .status-time { color: rgba(0,0,0,0.85); }
+
+/* ===== 编辑页 ===== */
+.edit-nav { height: 52px; background: #fff; display: flex; align-items: center; padding: 0 16px; justify-content: space-between; border-bottom: 0.5px solid rgba(0,0,0,0.08); flex-shrink: 0; }
+.edit-cancel { font-size: 15px; color: rgba(0,0,0,0.5); background: none; border: none; font-family: inherit; cursor: pointer; padding: 8px 0; }
+.edit-save { background: var(--brand); color: #fff; border: none; border-radius: 999px; padding: 9px 22px; font-size: 15px; font-weight: 500; font-family: inherit; cursor: pointer; }
+.edit-scroll { flex: 1; overflow-y: auto; padding: 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.edit-scroll::-webkit-scrollbar { display: none; }
+.edit-card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+.edit-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.edit-card-date { font-size: 16px; font-weight: 500; color: rgba(0,0,0,0.8); }
+.edit-input { width: 100%; min-height: 44px; border: none; background: none; font-size: 15px; color: rgba(0,0,0,0.8); font-family: inherit; resize: none; outline: none; line-height: 1.47; padding: 0; margin-bottom: 10px; display: block; }
+.edit-input::placeholder { color: rgba(0,0,0,0.25); }
+.edit-sep { height: 0.5px; background: rgba(0,0,0,0.07); margin: 0 -14px 10px; }
+.edit-thumbs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-bottom: 10px; }
+.edit-thumbs::-webkit-scrollbar { display: none; }
+.edit-thumb { width: 72px; height: 72px; border-radius: 8px; flex-shrink: 0; }
+.edit-tag-btn { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; font-family: inherit; font-size: 13px; color: rgba(0,0,0,0.35); cursor: pointer; padding: 0; }
+
+/* ===== 首页 ===== */
+.home-status-bar { height: 50px; background: #fff; display: flex; align-items: flex-end; padding: 0 20px 10px; justify-content: space-between; flex-shrink: 0; }
+.home-status-time { font-size: 15px; font-weight: 600; color: rgba(0,0,0,0.85); letter-spacing: -0.3px; }
+.home-nav { height: 44px; background: #fff; display: flex; align-items: center; padding: 0 14px; justify-content: space-between; border-bottom: 0.5px solid rgba(0,0,0,0.06); flex-shrink: 0; }
+.home-nav-tabs { display: flex; align-items: center; gap: 18px; }
+.home-nav-tab { font-size: 15px; color: rgba(0,0,0,0.35); cursor: pointer; position: relative; padding-bottom: 2px; }
+.home-nav-tab.active { font-size: 17px; font-weight: 500; color: rgba(0,0,0,0.85); }
+.home-nav-tab.active::after { content: ''; position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); width: 18px; height: 2.5px; background: var(--brand); border-radius: 2px; }
+.upload-bar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: #EEF5FF; border-bottom: 0.5px solid rgba(79,124,174,0.15); cursor: pointer; position: sticky; top: 0; z-index: 10; }
+.up-spin { animation: upSpin 1.5s linear infinite; }
+@keyframes upSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+.up-text { flex: 1; font-size: 13px; color: rgba(0,0,0,0.65); }
+.up-pct { font-size: 13px; color: #4f7cae; font-weight: 500; }
+.home-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.home-scroll::-webkit-scrollbar { display: none; }
+.home-profile-hd { background: linear-gradient(155deg,#fde8ee,#fdeee4 55%,#fef5e4); padding: 16px 16px 20px; }
+.profile-row { display: flex; align-items: center; gap: 12px; }
+.profile-avatar { width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0; background: linear-gradient(135deg,#ffb3c8,#ff80a8); display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.profile-info { flex: 1; }
+.profile-name { font-size: 16px; font-weight: 500; color: rgba(0,0,0,0.8); }
+.profile-days { font-size: 13px; color: rgba(0,0,0,0.5); margin-top: 2px; }
+.profile-invite { background: var(--brand); color: #fff; border: none; border-radius: 999px; padding: 7px 13px; font-size: 13px; font-family: inherit; cursor: pointer; white-space: nowrap; }
+.dev-card-wrap { background: #fff; padding: 12px 12px 0; }
+.dev-card { background: linear-gradient(135deg,#FFB84D,#FF9F2E); border-radius: 12px; padding: 12px 16px; }
+.dev-title-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
+.dev-arr { font-size: 18px; color: rgba(255,255,255,0.65); cursor: pointer; line-height: 1; }
+.dev-title { font-size: 15px; font-weight: 500; color: #fff; }
+.dev-body { font-size: 13px; color: rgba(255,255,255,0.9); line-height: 1.55; }
+.quick-row { background: #fff; display: flex; padding: 14px 4px 12px; }
+.quick-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; }
+.quick-icon { width: 42px; height: 42px; border-radius: 13px; display: flex; align-items: center; justify-content: center; }
+.quick-lbl { font-size: 11px; color: rgba(0,0,0,0.55); text-align: center; line-height: 1.29; }
+.memory-row { display: flex; align-items: center; padding: 11px 16px; background: #fff; border-top: 0.5px solid rgba(0,0,0,0.06); }
+.memory-txt { flex: 1; font-size: 14px; color: rgba(0,0,0,0.65); }
+.memory-btn { background: linear-gradient(90deg,#ff6ea8,#b57aef); color: #fff; border: none; border-radius: 999px; padding: 7px 14px; font-size: 13px; font-family: inherit; cursor: pointer; }
+.home-tl { background: #fff; margin-top: 8px; padding: 0 16px 16px; }
+.tl-hdr { display: flex; align-items: center; gap: 8px; padding: 14px 0 10px; }
+.tl-dot { width: 10px; height: 10px; border-radius: 50%; background: #FFA040; flex-shrink: 0; }
+.tl-date-txt { font-size: 14px; color: rgba(0,0,0,0.65); font-weight: 500; }
+.tl-sub { font-size: 12px; color: rgba(0,0,0,0.35); margin-left: 2px; }
+.tl-album { border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,77,136,0.1); }
+.tl-album-top { background: linear-gradient(135deg,#fff5f9,#fff0f7); padding: 14px 16px 12px; text-align: center; }
+.tl-album-ttl { font-size: 17px; font-weight: 500; color: rgba(0,0,0,0.8); margin-bottom: 8px; }
+.tl-tags { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.tl-tag { font-size: 11px; color: var(--brand); background: rgba(255,77,136,0.08); border-radius: 4px; padding: 3px 7px; }
+.tl-open-btn { width: 100%; background: linear-gradient(90deg,#ff6ea8,#ff4d88); color: #fff; border: none; padding: 13px; font-size: 16px; font-weight: 500; font-family: inherit; cursor: pointer; display: block; }
+.home-btm-tab { height: 58px; background: #fff; border-top: 0.5px solid rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: space-around; flex-shrink: 0; padding-bottom: 6px; }
+.htab { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; flex: 1; padding: 4px 0; position: relative; }
+.htab-lbl { font-size: 10px; color: rgba(0,0,0,0.35); }
+.htab.active .htab-lbl { color: var(--brand); }
+.htab-badge { position: absolute; top: 1px; right: calc(50% - 18px); background: #ff4d4d; color: #fff; font-size: 9px; min-width: 14px; height: 14px; border-radius: 7px; display: flex; align-items: center; justify-content: center; padding: 0 3px; line-height: 1; }
+</style>
+</head>
+<body>
+<div class="phone-shell">
+  <div class="phone-screen">
+
+    <!-- ===== 页面1：相册 ===== -->
+    <div class="page active" id="page-album">
+      <div class="status-bar"><span class="status-time">15:44</span><div class="status-icons" id="si1"></div></div>
+      <div class="nav-bar">
+        <button class="btn-x" onclick="showToast('返回')">✕</button>
+        <button style="display:flex;align-items:center;gap:5px;background:var(--surface2);border-radius:999px;padding:7px 14px;border:none;color:var(--text-primary);font-size:15px;font-weight:500;font-family:inherit;cursor:pointer" onclick="showToast('切换相册')">
+          最近项目 <span style="width:8px;height:8px;border-right:1.5px solid rgba(255,255,255,0.6);border-bottom:1.5px solid rgba(255,255,255,0.6);transform:rotate(45deg) translateY(-2px);display:inline-block"></span>
+        </button>
+        <div style="width:36px"></div>
+      </div>
+      <div class="scroll-wrap" id="albumWrap">
+        <div class="photo-scroll" id="albumScroll"></div>
+        <div class="time-axis" id="albumAxis"><div class="axis-handle" id="albumHandle"><div class="handle-pill"><div class="handle-arrows"><div class="arrow-up"></div><div class="arrow-down"></div></div></div></div></div>
+        <div class="time-bubble" id="albumBubble"></div>
+      </div>
+      <!-- 底部Bar：预览 | 超高清 | 完成 -->
+      <div class="bottom-bar">
+        <button class="preview-btn">预览</button>
+        <button class="quality-btn">超高清 <span class="chevron-up"></span></button>
+        <button class="ghost-btn" id="albumDoneBtn" onclick="albumDone()">完成</button>
+      </div>
+      <div class="bottom-tab">
+        <div class="tab-item" onclick="showPage('page-ai')"><span class="tab-ai">AI</span><span class="tab-label">智能识别</span><span class="tab-dot"></span></div>
+        <div class="tab-item active" onclick="switchAlbumTab(this)">
+          <svg width="22" height="17" viewBox="0 0 22 17" fill="none"><rect x="1" y="3.5" width="20" height="13" rx="2" stroke="white" stroke-width="1.4"/><path d="M7 3.5V1.5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0115 1.5v2" stroke="white" stroke-width="1.4"/><circle cx="7.5" cy="9.5" r="1.8" stroke="white" stroke-width="1.2"/><path d="M1.5 14l4.5-4 3 3 4.5-5 6 6" stroke="white" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="tab-label">相册</span><span class="tab-dot"></span>
+        </div>
+        <div class="tab-item" onclick="switchAlbumTab(this)">
+          <svg width="22" height="17" viewBox="0 0 22 17" fill="none"><rect x="1" y="2.5" width="14" height="12" rx="2" stroke="white" stroke-width="1.4"/><path d="M15 6.5l6-3v10l-6-3V6.5z" stroke="white" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          <span class="tab-label">拍小视频</span><span class="tab-dot"></span>
+        </div>
+        <div class="tab-item" onclick="switchAlbumTab(this)">
+          <svg width="22" height="17" viewBox="0 0 22 17" fill="none"><rect x="1" y="3.5" width="20" height="13" rx="2" stroke="white" stroke-width="1.4"/><circle cx="11" cy="10" r="3.5" stroke="white" stroke-width="1.4"/><path d="M7 3.5V1.5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0115 1.5v2" stroke="white" stroke-width="1.4"/></svg>
+          <span class="tab-label">拍照</span><span class="tab-dot"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 页面2：AI识别入口 ===== -->
+    <div class="page" id="page-ai">
+      <div class="status-bar"><span class="status-time">15:44</span><div class="status-icons" id="si2"></div></div>
+      <div class="nav-bar">
+        <button class="btn-x" onclick="showPage('page-album')">✕</button>
+        <div style="width:36px"></div>
+      </div>
+      <div class="ai-entry-body">
+        <div class="ai-start-btn" onclick="startRecognizing()"><span>开始识别</span></div>
+      </div>
+      <!-- 底部Bar：超高清 | 一键保存（灰色，未选时不可用）-->
+      <div class="bottom-tab">
+        <div class="tab-item active"><span class="tab-ai">AI</span><span class="tab-label">智能识别</span><span class="tab-dot"></span></div>
+        <div class="tab-item" onclick="showPage('page-album')">
+          <svg width="22" height="17" viewBox="0 0 22 17" fill="none"><rect x="1" y="3.5" width="20" height="13" rx="2" stroke="white" stroke-width="1.4"/><path d="M7 3.5V1.5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0115 1.5v2" stroke="white" stroke-width="1.4"/><circle cx="7.5" cy="9.5" r="1.8" stroke="white" stroke-width="1.2"/><path d="M1.5 14l4.5-4 3 3 4.5-5 6 6" stroke="white" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="tab-label">相册</span><span class="tab-dot"></span>
+        </div>
+        <div class="tab-item" onclick="showToast('拍小视频')">
+          <svg width="22" height="17" viewBox="0 0 22 17" fill="none"><rect x="1" y="2.5" width="14" height="12" rx="2" stroke="white" stroke-width="1.4"/><path d="M15 6.5l6-3v10l-6-3V6.5z" stroke="white" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          <span class="tab-label">拍小视频</span><span class="tab-dot"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 页面3：识别中/结果 ===== -->
+    <div class="page" id="page-recognizing">
+      <div class="status-bar"><span class="status-time">15:55</span><div class="status-icons" id="si3"></div></div>
+      <div class="nav-bar">
+        <button class="btn-x" onclick="showPage('page-album')">✕</button>
+        <div style="flex:1"></div>
+        <div style="width:36px"></div>
+      </div>
+
+      <!-- 进度条（识别中才显示暂停） -->
+      <div class="progress-bar-wrap">
+        <div class="progress-row">
+          <div class="progress-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff4d88" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+          </div>
+          <div class="progress-text-wrap">
+            <div class="progress-title" id="progressTitle">正在识别相册中的宝宝照片 0%</div>
+            <div class="progress-sub" id="progressSub">已找到宝宝照片 0 张</div>
+          </div>
+          <button class="pause-btn" id="pauseBtn" onclick="togglePause()">暂停</button>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+
+      <!-- 识别结果列表 -->
+      <div class="recog-scroll-wrap" id="recogWrap">
+        <div class="recog-scroll photo-scroll" id="recogScroll"></div>
+        <div class="time-axis" id="recogAxis"><div class="axis-handle" id="recogHandle"><div class="handle-pill"><div class="handle-arrows"><div class="arrow-up"></div><div class="arrow-down"></div></div></div></div></div>
+        <div class="time-bubble" id="recogBubble"></div>
+      </div>
+
+      <!-- 底部Bar：预览 | 超高清 | 一键保存(X张) -->
+      <div class="bottom-bar">
+        <button class="preview-btn">预览</button>
+        <button class="quality-btn">超高清 <span class="chevron-up"></span></button>
+        <button class="primary-btn" id="saveBarBtn" onclick="doSave()">一键保存 (0张)</button>
+      </div>
+      <!-- Tab：和相册页完全一致 -->
+      <div class="bottom-tab">
+        <div class="tab-item active"><span class="tab-ai">AI</span><span class="tab-label">智能识别</span><span class="tab-dot"></span></div>
+        <div class="tab-item" onclick="showPage('page-album')">
+          <svg width="22" height="17" viewBox="0 0 22 17" fill="none"><rect x="1" y="3.5" width="20" height="13" rx="2" stroke="white" stroke-width="1.4"/><path d="M7 3.5V1.5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0115 1.5v2" stroke="white" stroke-width="1.4"/><circle cx="7.5" cy="9.5" r="1.8" stroke="white" stroke-width="1.2"/><path d="M1.5 14l4.5-4 3 3 4.5-5 6 6" stroke="white" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="tab-label">相册</span><span class="tab-dot"></span>
+        </div>
+        <div class="tab-item" onclick="showToast('拍小视频')">
+          <svg width="22" height="17" viewBox="0 0 22 17" fill="none"><rect x="1" y="2.5" width="14" height="12" rx="2" stroke="white" stroke-width="1.4"/><path d="M15 6.5l6-3v10l-6-3V6.5z" stroke="white" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          <span class="tab-label">拍小视频</span><span class="tab-dot"></span>
+        </div>
+        <div class="tab-item" onclick="showToast('拍照')">
+          <svg width="22" height="17" viewBox="0 0 22 17" fill="none"><rect x="1" y="3.5" width="20" height="13" rx="2" stroke="white" stroke-width="1.4"/><circle cx="11" cy="10" r="3.5" stroke="white" stroke-width="1.4"/><path d="M7 3.5V1.5a1.5 1.5 0 011.5-1.5h5A1.5 1.5 0 0115 1.5v2" stroke="white" stroke-width="1.4"/></svg>
+          <span class="tab-label">拍照</span><span class="tab-dot"></span>
+        </div>
+      </div>
+
+      <!-- 识别完成弹窗：只有查看照片按钮 -->
+      <div class="done-modal" id="doneModal">
+        <div class="done-card">
+          <div class="done-icon">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="#ff4d88" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l6 6 10-10"/></svg>
+          </div>
+          <div class="done-title">智能识别完成</div>
+          <div class="done-desc" id="doneDesc">共识别出 0 张宝宝照片</div>
+          <button class="done-view-btn" onclick="closeDoneModal()">查看照片</button>
+        </div>
+      </div>
+
+      <!-- 后台banner -->
+      <div class="bg-banner" id="bgBanner">
+        <div class="bg-banner-info">
+          <div class="bg-banner-title" id="bgBannerText">正在识别宝宝照片 0%</div>
+          <div class="bg-banner-sub">识别在后台进行，不会中断</div>
+        </div>
+        <button class="bg-banner-btn" onclick="resumeFromBackground()">查看</button>
+      </div>
+    </div>
+
+    <!-- ===== 页面4：添加照片（当天） ===== -->
+    <div class="page" id="page-add">
+      <div class="status-bar"><span class="status-time">15:55</span><div class="status-icons" id="si4"></div></div>
+      <div class="nav-bar">
+        <button class="btn-text" onclick="showPage('page-recognizing')" style="font-size:20px;padding:4px">‹</button>
+        <div class="add-nav-title" id="addNavTitle">2026年5月11日</div>
+        <button class="primary-btn" id="addDoneBtn" onclick="confirmAddPhotos()" style="min-width:64px;padding:7px 16px;font-size:15px">完成</button>
+      </div>
+      <div class="scroll-wrap" id="addWrap">
+        <div class="photo-scroll" id="addScroll"></div>
+        <div class="time-axis" id="addAxis"><div class="axis-handle" id="addHandle"><div class="handle-pill"><div class="handle-arrows"><div class="arrow-up"></div><div class="arrow-down"></div></div></div></div></div>
+        <div class="time-bubble" id="addBubble"></div>
+      </div>
+    </div>
+
+    <!-- ===== 页面5：编辑页 ===== -->
+    <div class="page page-light" id="page-edit">
+      <div class="status-bar" style="background:#fff">
+        <span class="status-time" style="color:rgba(0,0,0,0.85)">15:44</span>
+        <div id="si5"></div>
+      </div>
+      <div class="edit-nav">
+        <button class="edit-cancel" onclick="showPage('page-recognizing')">取消</button>
+        <button class="edit-save" onclick="saveAndGoHome()">保存</button>
+      </div>
+      <div class="edit-scroll" id="editScroll"></div>
+    </div>
+
+    <!-- ===== 页面6：首页 ===== -->
+    <div class="page page-light" id="page-home">
+      <div class="home-status-bar">
+        <span class="home-status-time">17:33</span>
+        <div id="si6"></div>
+      </div>
+      <div class="home-nav">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.5)" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/></svg>
+        <div class="home-nav-tabs">
+          <span class="home-nav-tab">妈妈</span>
+          <span class="home-nav-tab active">此次</span>
+          <span class="home-nav-tab">基本</span>
+        </div>
+        <svg width="24" height="20" viewBox="0 0 24 20" fill="none" stroke="rgba(0,0,0,0.5)" stroke-width="1.8" stroke-linecap="round" style="cursor:pointer" onclick="showPage('page-album')"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M8 5V3.5A1.5 1.5 0 019.5 2h5A1.5 1.5 0 0116 3.5V5"/><circle cx="12" cy="12" r="3"/><path d="M18.5 8.5h.01" stroke-width="2.2"/></svg>
+      </div>
+      <div class="home-scroll">
+        <!-- 个人资料头 -->
+        <div class="home-profile-hd">
+          <div class="profile-row">
+            <div class="profile-avatar">👧</div>
+            <div class="profile-info">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                <span class="profile-name">此次</span>
+                <span style="font-size:13px;color:rgba(0,0,0,0.3)">✏️</span>
+              </div>
+              <div class="profile-days">第93天 🕐</div>
+            </div>
+            <button class="profile-invite">🎀 邀请亲友 ›</button>
+          </div>
+        </div>
+        <!-- 发育卡片 -->
+        <div class="dev-card-wrap">
+          <div class="dev-card">
+            <div class="dev-title-row">
+              <span class="dev-arr">‹</span>
+              <span class="dev-title">今天（5月14日）</span>
+              <span class="dev-arr">›</span>
+            </div>
+            <div class="dev-body">宝宝变化：我现在头能竖直了！爸爸妈妈可以试着慢慢抱起我再轻轻直立，可别猛地一下，那样可能会伤我的小脖子呢。›</div>
+          </div>
+        </div>
+        <!-- 快捷入口 -->
+        <div class="quick-row">
+          <div class="quick-item">
+            <div class="quick-icon" style="background:#E8F9F2"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00cc99" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M5 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/></svg></div>
+            <span class="quick-lbl">喂养记录</span>
+          </div>
+          <div class="quick-item">
+            <div class="quick-icon" style="background:#EBF5F9"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4f9cae" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,17 7,9 11,13 14,7 18,17"/><rect x="3" y="17" width="18" height="2" rx="1" fill="#4f9cae" stroke="none"/></svg></div>
+            <span class="quick-lbl">发育测评</span>
+          </div>
+          <div class="quick-item">
+            <div class="quick-icon" style="background:#FFF8E8"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFB040" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 3"/></svg></div>
+            <span class="quick-lbl">问答精选</span>
+          </div>
+          <div class="quick-item">
+            <div class="quick-icon" style="background:#E8F9F2"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00cc99" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M8 6h8M8 11h6M8 16h4"/></svg></div>
+            <span class="quick-lbl">记身高<br>体重</span>
+          </div>
+          <div class="quick-item">
+            <div class="quick-icon" style="background:#F2F2F5"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="1.8" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div>
+            <span class="quick-lbl" style="color:rgba(0,0,0,0.35)">更多</span>
+          </div>
+        </div>
+        <!-- 上传进度条（金刚区下方，下滑后吸顶） -->
+        <div class="upload-bar" id="uploadBar" style="display:none">
+          <svg class="up-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f7cae" stroke-width="2.2" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          <span class="up-text">正在保存 切勿删除本地照片</span>
+          <span class="up-pct" id="uploadPct">2%</span>
+          <span style="color:#4f7cae;font-size:15px;margin-left:2px">›</span>
+        </div>
+        <!-- 时间线 -->
+        <div class="home-tl">
+          <div class="tl-hdr">
+            <div class="tl-dot"></div>
+            <span class="tl-date-txt">今天</span>
+            <span class="tl-sub">第93天</span>
+          </div>
+          <div class="tl-album">
+            <div class="tl-album-top">
+              <div class="tl-album-ttl">宝宝「成长纪念册」</div>
+              <div class="tl-tags">
+                <span class="tl-tag">方便查找照片</span>
+                <span class="tl-tag">按娃月龄记录</span>
+                <span class="tl-tag">还能和家人共享</span>
+              </div>
+            </div>
+            <button class="tl-open-btn" onclick="showToast('立即开启')">立即开启</button>
+          </div>
+          <div class="tl-hdr" style="margin-top:6px">
+            <div class="tl-dot" style="background:#d0d0d0"></div>
+            <span class="tl-date-txt">2月11日</span>
+            <span class="tl-sub">出生日</span>
+          </div>
+          <div style="background:#f6f6f8;border-radius:12px;padding:14px;font-size:13px;color:rgba(0,0,0,0.45);line-height:1.6;text-align:center">宝宝的小老样十可爱了 ›</div>
+          <!-- 更多时间轴条目 -->
+          <div class="tl-hdr" style="margin-top:6px">
+            <div class="tl-dot" style="background:#d0d0d0"></div>
+            <span class="tl-date-txt">4月26日</span>
+            <span class="tl-sub">第75天</span>
+          </div>
+          <div style="background:#f6f6f8;border-radius:12px;overflow:hidden">
+            <div style="display:flex;gap:3px;padding:3px 3px 0">
+              <div style="flex:1;aspect-ratio:1;background:linear-gradient(135deg,#C9756C,#7C9BB5);border-radius:6px"></div>
+              <div style="flex:1;aspect-ratio:1;background:linear-gradient(135deg,#D4A96E,#7BA08B);border-radius:6px"></div>
+              <div style="flex:1;aspect-ratio:1;background:linear-gradient(135deg,#9B8EA8,#6BAA9E);border-radius:6px"></div>
+            </div>
+            <div style="padding:10px 12px;font-size:13px;color:rgba(0,0,0,0.6);line-height:1.5">今天宝宝第一次抬头！坚持了整整3秒钟～</div>
+          </div>
+          <div class="tl-hdr" style="margin-top:6px">
+            <div class="tl-dot" style="background:#d0d0d0"></div>
+            <span class="tl-date-txt">3月15日</span>
+            <span class="tl-sub">第33天</span>
+          </div>
+          <div style="background:#f6f6f8;border-radius:12px;overflow:hidden">
+            <div style="display:flex;gap:3px;padding:3px 3px 0">
+              <div style="flex:1;aspect-ratio:1;background:linear-gradient(135deg,#7B9EC9,#C4956A);border-radius:6px"></div>
+              <div style="flex:1;aspect-ratio:1;background:linear-gradient(135deg,#7BA05B,#D4875A);border-radius:6px"></div>
+            </div>
+            <div style="padding:10px 12px;font-size:13px;color:rgba(0,0,0,0.6);line-height:1.5">满月啦！全家人都来了，宝宝睡了一整天哈哈 ›</div>
+          </div>
+          <div class="tl-hdr" style="margin-top:6px">
+            <div class="tl-dot" style="background:#d0d0d0"></div>
+            <span class="tl-date-txt">2月20日</span>
+            <span class="tl-sub">第9天</span>
+          </div>
+          <div style="background:#f6f6f8;border-radius:12px;padding:14px;font-size:13px;color:rgba(0,0,0,0.45);line-height:1.6">宝宝今天第一次睁开眼睛看我，感觉心都化了 ›</div>
+        </div>
+        <div style="height:24px"></div>
+      </div>
+      <!-- 底部Tab -->
+      <div class="home-btm-tab">
+        <div class="htab">
+          <svg width="22" height="20" viewBox="0 0 22 20" fill="none"><circle cx="11" cy="6" r="4" stroke="rgba(0,0,0,0.3)" stroke-width="1.4"/><path d="M3 19c0-4 3.5-6 8-6s8 2 8 6" stroke="rgba(0,0,0,0.3)" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span class="htab-lbl">美柚</span>
+        </div>
+        <div class="htab">
+          <svg width="22" height="20" viewBox="0 0 22 20" fill="none"><rect x="2" y="2" width="18" height="16" rx="3" stroke="rgba(0,0,0,0.3)" stroke-width="1.4"/><path d="M6 8h10M6 12h6" stroke="rgba(0,0,0,0.3)" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span class="htab-lbl">记录</span>
+        </div>
+        <div class="htab">
+          <svg width="22" height="20" viewBox="0 0 22 20" fill="none"><circle cx="11" cy="10" r="8" stroke="rgba(0,0,0,0.3)" stroke-width="1.4"/><path d="M11 7v6M8 10h6" stroke="rgba(0,0,0,0.3)" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span class="htab-lbl">返现</span>
+        </div>
+        <div class="htab" style="position:relative">
+          <svg width="22" height="20" viewBox="0 0 22 20" fill="none"><path d="M4 3h14a2 2 0 012 2v8a2 2 0 01-2 2H7l-5 3V5a2 2 0 012-2z" stroke="rgba(0,0,0,0.3)" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          <div class="htab-badge">11</div>
+          <span class="htab-lbl">消息</span>
+        </div>
+        <div class="htab active">
+          <svg width="22" height="20" viewBox="0 0 22 20" fill="none"><circle cx="11" cy="6" r="4" stroke="#ff4d88" stroke-width="1.4"/><path d="M3 19c0-4 3.5-6 8-6s8 2 8 6" stroke="#ff4d88" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span class="htab-lbl" style="color:#ff4d88">我</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+</div>
+
+<script>
+// 状态栏
+function siHTML(){ return `<svg width="17" height="12" viewBox="0 0 17 12" fill="white"><rect x="0" y="4" width="3" height="8" rx="1" opacity="0.4"/><rect x="4.5" y="2.5" width="3" height="9.5" rx="1" opacity="0.6"/><rect x="9" y="0.5" width="3" height="11.5" rx="1"/><rect x="13.5" y="0.5" width="3" height="11.5" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="white"><path d="M8 3C10.2 3 12.2 3.9 13.7 5.3L15 4C13.1 2.1 10.7 1 8 1S2.9 2.1 1 4l1.3 1.3C3.8 3.9 5.8 3 8 3z" opacity="0.4"/><path d="M8 6c1.4 0 2.6.5 3.5 1.4L13 6c-1.3-1.3-3-2-5-2S4.3 4.7 3 6l1.5 1.4C5.4 6.5 6.6 6 8 6z" opacity="0.7"/><circle cx="8" cy="11" r="1.5"/></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="white" stroke-opacity="0.35"/><rect x="2" y="2" width="17" height="8" rx="2" fill="white"/><path d="M23 4v4c1-.4 1.5-1 1.5-2S24 4.4 23 4z" fill="white" opacity="0.4"/></svg>`; }
+['si1','si2','si3','si4'].forEach(id=>document.getElementById(id).innerHTML=siHTML());
+function siDarkHTML(){ return `<svg width="17" height="12" viewBox="0 0 17 12" fill="rgba(0,0,0,0.75)"><rect x="0" y="4" width="3" height="8" rx="1" opacity="0.35"/><rect x="4.5" y="2.5" width="3" height="9.5" rx="1" opacity="0.55"/><rect x="9" y="0.5" width="3" height="11.5" rx="1"/><rect x="13.5" y="0.5" width="3" height="11.5" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="rgba(0,0,0,0.75)"><path d="M8 3C10.2 3 12.2 3.9 13.7 5.3L15 4C13.1 2.1 10.7 1 8 1S2.9 2.1 1 4l1.3 1.3C3.8 3.9 5.8 3 8 3z" opacity="0.35"/><path d="M8 6c1.4 0 2.6.5 3.5 1.4L13 6c-1.3-1.3-3-2-5-2S4.3 4.7 3 6l1.5 1.4C5.4 6.5 6.6 6 8 6z" opacity="0.65"/><circle cx="8" cy="11" r="1.5"/></svg><svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="rgba(0,0,0,0.3)"/><rect x="2" y="2" width="17" height="8" rx="2" fill="rgba(0,0,0,0.75)"/><path d="M23 4v4c1-.4 1.5-1 1.5-2S24 4.4 23 4z" fill="rgba(0,0,0,0.35)"/></svg>`; }
+['si5','si6'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=siDarkHTML();});
+
+function showPage(id){ document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+function switchAlbumTab(el){ document.querySelectorAll('#page-album .tab-item').forEach(t=>t.classList.remove('active')); el.classList.add('active'); }
+
+const P=[
+  ['#7B9EC9','#C4956A','#7BA05B','#D4875A','#9B8EA8','#6B9AB8','#C4A882','#8BAA7C'],
+  ['#C9756C','#7C9BB5','#B8A86E','#6B9E8A','#A87CB8','#C8956C','#7BA0B5','#9AB88A'],
+  ['#D4A96E','#7BA08B','#C96C7C','#8B9DC3','#6BAA9E','#B87C9B','#9DC38B','#C3A87C'],
+  ['#A09BC4','#6BAA8B','#C4A07C','#8BC49B','#C47C9B','#9BC4A0','#7C8BC4','#C4B88B'],
+];
+function gc(gi,i){ return `linear-gradient(135deg,${P[gi%4][i%8]},${P[(gi+1)%4][(i+3)%8]})`; }
+
+const albumGroups=[
+  {date:'2025年3月22日',relDate:'2025年3月22日',count:10},
+  {date:'2025年6月5日',relDate:'2025年6月5日',count:8},
+  {date:'2025年8月31日',relDate:'2025年8月31日',count:11},
+  {date:'2025年10月8日',relDate:'2025年10月8日',count:9},
+  {date:'2025年12月20日',relDate:'2025年12月20日',count:14},
+  {date:'2026年3月15日',relDate:'2026年3月15日',count:11},
+  {date:'2026年4月26日',relDate:'2026年4月26日',count:9},
+  {date:'2026年5月12日',relDate:'星期一',count:6},
+  {date:'2026年5月13日',relDate:'昨天',count:8},
+  {date:'2026年5月14日',relDate:'今天',count:12},
+];
+const recogGroups=[
+  {date:'2025年10月3日',relDate:'2025年10月3日',count:1},
+  {date:'2026年2月17日',relDate:'2026年2月17日',count:4},
+  {date:'2026年3月7日',relDate:'2026年3月7日',count:5},
+  {date:'2026年3月20日',relDate:'2026年3月20日',count:2},
+  {date:'2026年3月27日',relDate:'2026年3月27日',count:1},
+  {date:'2026年4月23日',relDate:'2026年4月23日',count:4},
+  {date:'2026年5月5日',relDate:'2026年5月5日',count:5},
+  {date:'2026年5月11日',relDate:'2026年5月11日',count:3},
+];
+
+function makeCell(id,gi,i,selected,added){
+  const cell=document.createElement('div');
+  cell.className='photo-cell'+(selected?' selected':'')+(added?' added':'');
+  cell.dataset.id=id; cell.dataset.gi=gi;
+  const inner=document.createElement('div'); inner.className='photo-inner';
+  const bg=document.createElement('div'); bg.className='photo-bg';
+  bg.style.cssText=`width:100%;height:100%;background:${gc(gi,i)};`;
+  const ring=document.createElement('div'); ring.className='check-ring'; ring.innerHTML='<div class="tick"></div>';
+  const num=document.createElement('div'); num.className='check-num';
+  inner.append(bg,ring,num); cell.appendChild(inner);
+  return cell;
+}
+
+// ===== 相册 =====
+let albumSel=new Set(),albumOrder=[],albumMap={},albumCells=[];
+function renderAlbum(){
+  const scroll=document.getElementById('albumScroll'); let n=0;
+  albumGroups.forEach((g,gi)=>{
+    const group=document.createElement('div'); group.className='date-group'; group.dataset.date=g.relDate;
+    const hdr=document.createElement('div'); hdr.className='date-header';
+    hdr.innerHTML=`<span class="date-label">${g.date}</span><button class="date-action-btn">全选</button>`;
+    hdr.querySelector('button').addEventListener('click',()=>albumToggleAll(gi));
+    group.appendChild(hdr);
+    const grid=document.createElement('div'); grid.className='photo-grid';
+    const isLast=gi===albumGroups.length-1, cnt=isLast?g.count-1:g.count;
+    for(let i=0;i<cnt;i++){
+      const id=`a${n++}`, cell=makeCell(id,gi,i,false,false);
+      cell.classList.add('tick-only');
+      grid.appendChild(cell); albumMap[id]={el:cell,gi}; albumCells.push({id,el:cell});
+    }
+    if(isLast){
+      const wc=document.createElement('div'); wc.className='wechat-cell';
+      wc.innerHTML=`<div class="wechat-inner"><div class="wechat-icon"><svg width="22" height="18" viewBox="0 0 22 18" fill="none"><path d="M8.5 3C4.9 3 2 5.5 2 8.5c0 1.6.8 3 2 4l-.5 2.5 3-1.5c.6.2 1.3.3 2 .3" stroke="white" stroke-width="1.4" stroke-linecap="round"/><path d="M11 8c0-2.8 2.7-5 6-5s6 2.2 6 5-2.7 5-6 5l-3 1.5.5-2.5C12.5 11 11 9.6 11 8z" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg></div><span>从微信导入</span></div>`;
+      grid.appendChild(wc);
+    }
+    group.appendChild(grid); scroll.appendChild(group);
+  });
+  requestAnimationFrame(()=>{ const s=document.getElementById('albumScroll'); s.scrollTop=s.scrollHeight; syncHandle('albumScroll','albumHandle','albumWrap'); });
+}
+function albumSet(id,state){
+  if(!albumMap[id])return; const prev=albumSel.has(id); if(prev===state)return;
+  const {el}=albumMap[id];
+  if(state){albumSel.add(id);albumOrder.push(id);el.classList.add('selected');}
+  else{albumSel.delete(id);albumOrder=albumOrder.filter(x=>x!==id);el.classList.remove('selected');}
+  refreshAlbumNums(); refreshAlbumBtn();
+}
+function refreshAlbumNums(){ albumCells.forEach(({id})=>{const el=albumMap[id]?.el;if(el)el.querySelector('.check-num').textContent='';}); albumOrder.forEach((id,i)=>{const el=albumMap[id]?.el;if(el)el.querySelector('.check-num').textContent=i+1;}); }
+function refreshAlbumBtn(){ const btn=document.getElementById('albumDoneBtn'),n=albumSel.size; btn.textContent=n>0?`完成 (${n})`:'完成'; btn.classList.toggle('active',n>0); }
+function albumToggleAll(gi){ const ids=albumCells.filter(c=>albumMap[c.id]?.gi==gi).map(c=>c.id); const all=ids.every(id=>albumSel.has(id)); ids.forEach(id=>albumSet(id,!all)); }
+
+// ===== 识别结果 =====
+let recogSel=new Set(),recogOrder=[],recogMap={},recogCells=[],recogRendered=0;
+function renderRecogUpTo(n){
+  const scroll=document.getElementById('recogScroll');
+  for(let gi=recogRendered;gi<n&&gi<recogGroups.length;gi++){
+    const g=recogGroups[gi];
+    const group=document.createElement('div'); group.className='date-group'; group.dataset.date=g.relDate;
+    const hdr=document.createElement('div'); hdr.className='date-header';
+    hdr.innerHTML=`<span class="date-label">${g.date}</span><button class="date-action-btn" data-gi="${gi}">添加照片</button>`;
+    hdr.querySelector('button').addEventListener('click',()=>openAddPage(gi));
+    group.appendChild(hdr);
+    const grid=document.createElement('div'); grid.className='photo-grid';
+    for(let i=0;i<g.count;i++){
+      const id=`r${gi}_${i}`, cell=makeCell(id,gi,i,true,false);
+        cell.classList.add('tick-only');
+        grid.appendChild(cell); recogSel.add(id); recogOrder.push(id);
+      recogMap[id]={el:cell,gi}; recogCells.push({id,el:cell});
+    }
+    group.appendChild(grid); scroll.insertBefore(group, scroll.firstChild); recogRendered++;
+  }
+  refreshRecogNums(); updateSaveBtns();
+}
+function refreshRecogNums(){ recogCells.forEach(({id})=>{const el=recogMap[id]?.el;if(el)el.querySelector('.check-num').textContent='';}); recogOrder.forEach((id,i)=>{const el=recogMap[id]?.el;if(el)el.querySelector('.check-num').textContent=i+1;}); }
+function recogSet(id,state){
+  if(!recogMap[id])return; const prev=recogSel.has(id); if(prev===state)return;
+  const {el}=recogMap[id];
+  if(state){recogSel.add(id);recogOrder.push(id);el.classList.add('selected');}
+  else{recogSel.delete(id);recogOrder=recogOrder.filter(x=>x!==id);el.classList.remove('selected');}
+  refreshRecogNums(); updateSaveBtns();
+}
+function updateSaveBtns(){ const n=recogSel.size; document.getElementById('saveBarBtn').textContent=`一键保存 (${n}张)`; }
+
+// ===== 添加照片页 =====
+let addPageGi=0, addSel=new Set(), addMap={}, addCells=[], addAllSelectable=[];
+function openAddPage(gi){
+  addPageGi=gi; addSel=new Set(); addMap={}; addCells=[]; addAllSelectable=[]; addAllSelected=false;
+  const scroll=document.getElementById('addScroll'); scroll.innerHTML='';
+  const g=recogGroups[gi];
+  document.getElementById('addNavTitle').textContent=g.date;
+  const totalToday=g.count*3;
+  const group=document.createElement('div'); group.className='date-group';
+  const hdr=document.createElement('div'); hdr.className='date-header';
+  // 全选按钮和日期同行，字号13px和日期一致
+  hdr.innerHTML=`<span class="date-label">${g.date}</span><button class="date-action-btn" id="selectAllBtn" onclick="toggleSelectAll()">全选</button>`;
+  group.appendChild(hdr);
+  const grid=document.createElement('div'); grid.className='photo-grid';
+  for(let i=0;i<totalToday;i++){
+    const id=`add${gi}_${i}`, isAdded=i<g.count;
+    const cell=makeCell(id,gi,i,isAdded,false);
+    cell.classList.add('tick-only');
+    grid.appendChild(cell); addMap[id]={el:cell,isAdded};
+    addCells.push({id,el:cell}); addAllSelectable.push(id);
+    if(isAdded) addSel.add(id); // 已识别照片默认选中
+  }
+  group.appendChild(grid); scroll.appendChild(group);
+  refreshAddBtn();
+  showPage('page-add');
+  setupAxis('addScroll','addWrap','addAxis','addHandle','addBubble',[g]);
+  setupDrag(document.getElementById('addScroll'),document.getElementById('addWrap'),()=>addMap,()=>addCells,addSet,()=>addSel);
+}
+function addSet(id,state){
+  if(!addMap[id])return;
+  const prev=addSel.has(id); if(prev===state)return;
+  const {el}=addMap[id];
+  if(state){
+    addSel.add(id); el.classList.add('selected');
+  } else {
+    addSel.delete(id); el.classList.remove('selected');
+  }
+  refreshAddBtn();
+}
+function refreshAddBtn(){
+  document.getElementById('addDoneBtn').textContent='完成';
+}
+let addAllSelected=false;
+function toggleSelectAll(){
+  // 若当前全部已选则取消全选，否则全选
+  const allSelected=addAllSelectable.every(id=>addSel.has(id));
+  addAllSelected=!allSelected;
+  addAllSelectable.forEach(id=>addSet(id,addAllSelected));
+  const btn=document.getElementById('selectAllBtn');
+  if(btn) btn.textContent=addAllSelected?'取消全选':'全选';
+}
+function confirmAddPhotos(){
+  const n=addSel.size;
+  if(n>0){
+    const g=recogGroups[addPageGi];
+    const scroll=document.getElementById('recogScroll');
+    const groups=scroll.querySelectorAll('.date-group');
+    let targetGrid=null;
+    groups.forEach(gr=>{ if(gr.dataset.date===g.relDate) targetGrid=gr.querySelector('.photo-grid'); });
+    if(targetGrid){
+      let extra=0;
+      addSel.forEach(id=>{
+        if(addMap[id]?.isAdded) return; // 已识别的不重复添加
+        const newId=`extra_${id}`, i=recogCells.length+extra;
+        const cell=makeCell(newId,addPageGi,i,true,false);
+        cell.classList.add('tick-only');
+        targetGrid.appendChild(cell);
+        recogSel.add(newId); recogOrder.push(newId);
+        recogMap[newId]={el:cell,gi:addPageGi}; recogCells.push({id:newId,el:cell}); extra++;
+      });
+    }
+    refreshRecogNums(); updateSaveBtns();
+    showToast(`已添加 ${n} 张照片`);
+  }
+  showPage('page-recognizing');
+}
+
+// ===== 识别进度 =====
+let recogProgress=0,isPaused=false,recogTimer=null,foundCount=0;
+function startRecognizing(){
+  recogProgress=0;isPaused=false;foundCount=0;
+  recogRendered=0;recogCells=[];recogMap={};recogSel=new Set();recogOrder=[];
+  document.getElementById('recogScroll').innerHTML='';
+  document.getElementById('progressFill').style.width='0%';
+  document.getElementById('progressFill').style.background='';
+  document.getElementById('progressFill').classList.remove('paused');
+  document.querySelector('.progress-icon').innerHTML=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff4d88" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
+  document.getElementById('pauseBtn').textContent='暂停';
+  document.getElementById('pauseBtn').style.display='';
+  const shrinkBtn=document.querySelector('#page-recognizing .nav-bar .btn-text');
+  if(shrinkBtn) shrinkBtn.style.display='';
+  document.getElementById('doneModal').classList.remove('show');
+  updateSaveBtns(); showPage('page-recognizing'); runProgress();
+  setupAxis('recogScroll','recogWrap','recogAxis','recogHandle','recogBubble',[...recogGroups].reverse());
+  setupDrag(document.getElementById('recogScroll'),document.getElementById('recogWrap'),()=>recogMap,()=>recogCells,recogSet,()=>recogSel);
+}
+function runProgress(){
+  clearInterval(recogTimer);
+  recogTimer=setInterval(()=>{
+    if(isPaused)return;
+    recogProgress=Math.min(100,recogProgress+Math.random()*1.8+0.5);
+    const pct=Math.round(recogProgress);
+    const shouldShow=Math.floor((recogProgress/100)*recogGroups.length);
+    if(shouldShow>recogRendered){renderRecogUpTo(shouldShow);foundCount=recogCells.length;}
+    document.getElementById('progressFill').style.width=pct+'%';
+    document.getElementById('progressTitle').textContent=`正在识别相册中的宝宝照片 ${pct}%`;
+    document.getElementById('progressSub').textContent=`已找到宝宝照片 ${foundCount} 张`;
+    document.getElementById('bgBannerText').textContent=`正在识别宝宝照片 ${pct}%`;
+    if(recogProgress>=100){clearInterval(recogTimer);setTimeout(()=>{renderRecogUpTo(recogGroups.length);foundCount=recogCells.length;updateSaveBtns();showDoneState();showDoneModal();},400);}
+  },120);
+}
+function togglePause(){
+  isPaused=!isPaused;
+  const btn=document.getElementById('pauseBtn'),fill=document.getElementById('progressFill'),pct=Math.round(recogProgress);
+  if(isPaused){btn.textContent='继续';fill.classList.add('paused');document.getElementById('progressTitle').textContent=`识别已暂停 ${pct}%`;}
+  else{btn.textContent='暂停';fill.classList.remove('paused');document.getElementById('progressTitle').textContent=`正在识别相册中的宝宝照片 ${pct}%`;runProgress();}
+}
+function shrinkToBackground(){ document.getElementById('bgBanner').classList.add('show'); showPage('page-album'); }
+function resumeFromBackground(){ document.getElementById('bgBanner').classList.remove('show'); showPage('page-recognizing'); }
+function showDoneState(){
+  // 进度条满格变成完成色
+  const fill=document.getElementById('progressFill');
+  fill.style.width='100%';
+  fill.style.background='linear-gradient(90deg,#ff4d88,#ff9ac1)';
+  // 图标换成勾
+  document.querySelector('.progress-icon').innerHTML=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff4d88" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-9"/></svg>`;
+  // 文案
+  document.getElementById('progressTitle').textContent=`识别完成！共找到 ${foundCount} 张宝宝照片 🎉`;
+  document.getElementById('progressSub').textContent='';
+  // 隐藏暂停按钮
+  document.getElementById('pauseBtn').style.display='none';
+}
+function showDoneModal(){ document.getElementById('doneDesc').textContent=`共识别出 ${recogCells.length} 张宝宝照片`; document.getElementById('doneModal').classList.add('show'); }
+function closeDoneModal(){ document.getElementById('doneModal').classList.remove('show'); }
+function doSave(){ showPage('page-home'); startUploadProgress(); }
+
+// ===== 编辑页 =====
+// 相册完成：多日期→编辑页，单日期→toast
+function albumDone(){
+  if(albumSel.size===0) return;
+  const gis=new Set([...albumSel].map(id=>albumMap[id]?.gi));
+  if(gis.size>1){
+    buildEditPageFrom(albumSel,albumOrder,albumMap,albumGroups);
+    showPage('page-edit');
+  } else {
+    showToast(`已添加 ${albumSel.size} 张照片`);
+  }
+}
+
+function buildEditPageFrom(selSet,orderArr,photoMap,groupsArr){
+  const scroll=document.getElementById('editScroll');
+  scroll.innerHTML='';
+  const grouped={};
+  orderArr.forEach(id=>{
+    if(!selSet.has(id))return;
+    const info=photoMap[id]; if(!info)return;
+    if(!grouped[info.gi]) grouped[info.gi]=[];
+    grouped[info.gi].push(id);
+  });
+  const gis=Object.keys(grouped).map(Number).sort((a,b)=>b-a);
+  if(!gis.length){ scroll.innerHTML='<div style="text-align:center;color:rgba(0,0,0,0.3);font-size:14px;padding:40px">没有选中的照片</div>'; return; }
+  gis.forEach(gi=>{
+    const g=groupsArr[gi], photos=grouped[gi];
+    const card=document.createElement('div'); card.className='edit-card';
+    const hdr=document.createElement('div'); hdr.className='edit-card-header';
+    hdr.innerHTML=`<span class="edit-card-date">${g.date}</span><span style="font-size:15px;color:rgba(0,0,0,0.28);cursor:pointer">✏️</span>`;
+    const ta=document.createElement('textarea'); ta.className='edit-input'; ta.placeholder='写点什么...'; ta.rows=2;
+    ta.addEventListener('input',function(){this.style.height='auto';this.style.height=this.scrollHeight+'px';});
+    const sep=document.createElement('div'); sep.className='edit-sep';
+    const thumbs=document.createElement('div'); thumbs.className='edit-thumbs';
+    photos.forEach((id,i)=>{ const info=photoMap[id]; const t=document.createElement('div'); t.className='edit-thumb'; t.style.background=gc(info.gi,i); thumbs.appendChild(t); });
+    const tagBtn=document.createElement('button'); tagBtn.className='edit-tag-btn';
+    tagBtn.innerHTML=`<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 2h5.5l6.5 6.5-5.5 5.5L2 8V2z" stroke="rgba(0,0,0,0.3)" stroke-width="1.4" stroke-linejoin="round"/><circle cx="5" cy="5" r="1.2" fill="rgba(0,0,0,0.3)"/></svg> 标签`;
+    tagBtn.onclick=()=>showToast('选择标签');
+    card.append(hdr,ta,sep,thumbs,tagBtn);
+    scroll.appendChild(card);
+  });
+}
+
+function saveAndGoHome(){
+  showPage('page-home');
+  startUploadProgress();
+}
+
+let uploadTimer=null, uploadPct=0;
+function startUploadProgress(){
+  const bar=document.getElementById('uploadBar'), pctEl=document.getElementById('uploadPct');
+  bar.style.display='flex'; uploadPct=2; if(pctEl) pctEl.textContent='2%';
+  clearInterval(uploadTimer);
+  uploadTimer=setInterval(()=>{
+    uploadPct=Math.min(100,uploadPct+Math.random()*1.8+0.6);
+    const pct=Math.round(uploadPct);
+    if(pctEl) pctEl.textContent=pct+'%';
+    if(uploadPct>=100){ clearInterval(uploadTimer); if(pctEl) pctEl.textContent='完成 ✓'; setTimeout(()=>{ bar.style.display='none'; },2000); }
+  },250);
+}
+
+// ===== 时间轴 =====
+const PAD=12,HH=40;
+function syncHandle(scrollId,handleId,wrapId){
+  const s=document.getElementById(scrollId),h=document.getElementById(handleId),w=document.getElementById(wrapId);
+  if(!s||!h||!w)return;
+  const total=w.offsetHeight-PAD*2-HH,maxS=s.scrollHeight-s.clientHeight;
+  const ratio=maxS>0?s.scrollTop/maxS:1;
+  h.style.top=(PAD+ratio*total)+'px';
+}
+function setupAxis(scrollId,wrapId,axisId,handleId,bubbleId,groups){
+  const s=document.getElementById(scrollId),w=document.getElementById(wrapId);
+  const axis=document.getElementById(axisId),handle=document.getElementById(handleId),bubble=document.getElementById(bubbleId);
+  if(!s||!w||!axis||!handle||!bubble)return;
+  let down=false,hideT=null;
+  function show(){axis.classList.add('visible');clearTimeout(hideT);hideT=setTimeout(()=>{if(!down)axis.classList.remove('visible');},2000);}
+  function drag(cy){
+    const wr=w.getBoundingClientRect(),total=wr.height-PAD*2-HH;
+    const rel=Math.max(0,Math.min(cy-wr.top-PAD,total)),ratio=total>0?rel/total:1;
+    handle.style.top=(PAD+rel)+'px';
+    s.scrollTop=ratio*(s.scrollHeight-s.clientHeight);
+    bubble.style.top=(PAD+rel+HH/2-14)+'px';
+    bubble.textContent=groups[Math.max(0,Math.min(groups.length-1,Math.round(ratio*(groups.length-1))))].relDate;
+    bubble.classList.add('visible');
+  }
+  s.addEventListener('scroll',()=>{syncHandle(scrollId,handleId,wrapId);show();});
+  axis.addEventListener('touchstart',e=>{down=true;axis.classList.add('dragging','visible');clearTimeout(hideT);drag(e.touches[0].clientY);e.stopPropagation();e.preventDefault();},{passive:false});
+  axis.addEventListener('touchmove',e=>{if(!down)return;drag(e.touches[0].clientY);e.preventDefault();},{passive:false});
+  axis.addEventListener('touchend',()=>{down=false;axis.classList.remove('dragging');bubble.classList.remove('visible');hideT=setTimeout(()=>axis.classList.remove('visible'),1200);});
+  axis.addEventListener('mousedown',e=>{down=true;axis.classList.add('dragging','visible');clearTimeout(hideT);drag(e.clientY);e.preventDefault();e.stopPropagation();});
+  document.addEventListener('mousemove',e=>{if(down)drag(e.clientY);});
+  document.addEventListener('mouseup',()=>{if(!down)return;down=false;axis.classList.remove('dragging');bubble.classList.remove('visible');hideT=setTimeout(()=>axis.classList.remove('visible'),1200);});
+}
+
+// ===== 拖选 =====
+function setupDrag(scrollEl,wrapEl,getMap,getCells,setFn,getSel){
+  let drag=null;
+  function pos(cx,cy){const r=wrapEl.getBoundingClientRect();return{x:cx-r.left,y:cy-r.top+scrollEl.scrollTop};}
+  function inRect(x1,y1,x2,y2){
+    const l=Math.min(x1,x2),r=Math.max(x1,x2),t=Math.min(y1,y2),b=Math.max(y1,y2);
+    const wr=wrapEl.getBoundingClientRect();
+    return getCells().filter(({el})=>{const rc=el.getBoundingClientRect();const cx=(rc.left+rc.right)/2-wr.left,cy=(rc.top+rc.bottom)/2-wr.top+scrollEl.scrollTop;return cx>=l&&cx<=r&&cy>=t&&cy<=b;}).map(c=>c.id);
+  }
+  scrollEl.addEventListener('touchstart',e=>{
+    const t=e.touches[0],p=pos(t.clientX,t.clientY),ce=e.target.closest('.photo-cell');
+    drag={sx:p.x,sy:p.y,cx:t.clientX,cy:t.clientY,moved:false,tap:ce?.dataset.id||null,mode:ce?!getSel().has(ce.dataset.id):true,last:new Set()};
+  },{passive:true});
+  scrollEl.addEventListener('touchmove',e=>{
+    if(!drag)return;
+    const t=e.touches[0];
+    if(!drag.moved&&Math.abs(t.clientX-drag.cx)<6&&Math.abs(t.clientY-drag.cy)<6)return;
+    drag.moved=true;
+    const p=pos(t.clientX,t.clientY),inn=new Set(inRect(drag.sx,drag.sy,p.x,p.y));
+    inn.forEach(id=>{if(!drag.last.has(id))setFn(id,drag.mode);});
+    drag.last.forEach(id=>{if(!inn.has(id))setFn(id,!drag.mode);});
+    drag.last=inn;e.preventDefault();
+  },{passive:false});
+  scrollEl.addEventListener('touchend',()=>{if(drag&&!drag.moved&&drag.tap)setFn(drag.tap,!getSel().has(drag.tap));drag=null;});
+  scrollEl.addEventListener('mousedown',e=>{
+    const ce=e.target.closest('.photo-cell'),p=pos(e.clientX,e.clientY);
+    drag={sx:p.x,sy:p.y,cx:e.clientX,cy:e.clientY,moved:false,tap:ce?.dataset.id||null,mode:ce?!getSel().has(ce.dataset.id):true,last:new Set()};
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!drag)return;
+    if(!drag.moved&&Math.abs(e.clientX-drag.cx)<4&&Math.abs(e.clientY-drag.cy)<4)return;
+    drag.moved=true;
+    const p=pos(e.clientX,e.clientY),inn=new Set(inRect(drag.sx,drag.sy,p.x,p.y));
+    inn.forEach(id=>{if(!drag.last.has(id))setFn(id,drag.mode);});
+    drag.last.forEach(id=>{if(!inn.has(id))setFn(id,!drag.mode);});
+    drag.last=inn;
+  });
+  document.addEventListener('mouseup',()=>{if(drag&&!drag.moved&&drag.tap)setFn(drag.tap,!getSel().has(drag.tap));drag=null;});
+}
+
+let toastT;
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1800);}
+
+// ===== 初始化 =====
+renderAlbum(); refreshAlbumBtn();
+setupDrag(document.getElementById('albumScroll'),document.getElementById('albumWrap'),()=>albumMap,()=>albumCells,albumSet,()=>albumSel);
+setupAxis('albumScroll','albumWrap','albumAxis','albumHandle','albumBubble',albumGroups);
+</script>
+</body>
+</html>
